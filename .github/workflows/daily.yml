@@ -37,7 +37,7 @@ jobs:
       - name: 抓取并渲染
         run: python3 build.py
 
-      - name: 推送钉钉
+      - name: 推送通知
         # 钉钉抖动不该连累站点部署：失败只标黄，不阻断 deploy
         continue-on-error: true
         env:

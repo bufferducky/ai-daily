@@ -37,15 +37,38 @@ open dist/index.html
 | `focus_sections` | 默认展开的分节，可选项：要闻 / 模型发布 / 开发生态 / 产品应用 / 技术与洞察 / 行业动态 / 前瞻与传闻 |
 | `default_font_size` | 初始字号（页面里还能再调） |
 
-## 钉钉推送
+## 推送通道
 
-1. 钉钉群 → 群设置 → 机器人 → 添加「自定义机器人」，安全设置建议用**加签**
-2. 仓库 Settings → Secrets and variables → Actions 里加两个 secret：
-   - `DINGTALK_WEBHOOK`：完整 webhook 地址
-   - `DINGTALK_SECRET`：`SEC` 开头的加签密钥（没开加签可留空）
-3. 用 `actionCard` 类型推送：封面图 + 一句摘要 + 关注节的条目标题 + 「阅读全文」按钮
+按环境变量自动选择：**配了飞书就发飞书，否则发钉钉。**
 
-只有最新一期是**当天**才会推，避免上游没更新时把昨天的内容再推一遍。手动测试用 `workflow_dispatch` 勾上 `force_notify`。
+### 飞书（当前使用）
+
+用**卡片 2.0 + 折叠面板**，7 个分节直接在卡片里展开阅读，不用跳浏览器：
+
+- 关注节默认展开，其余收起，每个面板里是带序号的条目标题
+- 底部「读全文」按钮才跳网页（全文 24 条 + 图片塞不进卡片，深读也需要排版和归档）
+- 只有「读全文」这一个动作会离开飞书
+
+配置：仓库 Settings → Secrets → Actions
+
+| secret | 说明 |
+|---|---|
+| `FEISHU_WEBHOOK` | 群机器人 Webhook，`https://open.feishu.cn/open-apis/bot/v2/hook/...` |
+| `FEISHU_SECRET` | 开启了「签名校验」才需要 |
+
+加签算法是 `HMAC-SHA256(key="{timestamp}\n{secret}", msg=空)`，时间戳用**秒**——和钉钉正好相反（钉钉 key 是 secret、时间戳用毫秒），两套实现都在 `notify.py` 里。
+
+### 钉钉（保留备用）
+
+配 `DINGTALK_WEBHOOK` / `DINGTALK_SECRET` 即可切回，用 `actionCard` 类型。
+
+### 幂等
+
+只有最新一期是**当天**才会推，避免上游没更新时把昨天的内容再推一遍。手动测试用 `workflow_dispatch` 勾 `force_notify`；只想看要发什么就勾 `dry_run`。
+
+### 卡片 2.0 的坑
+
+`note`、`action` 这些 1.0 组件在 schema 2.0 里**已被移除**，用了会返回 `ErrCode 200861 unsupported tag`。摘要用 `markdown`，按钮用独立的 `button` 元素 + `behaviors: [{type: "open_url"}]`。
 
 ## 定时
 
