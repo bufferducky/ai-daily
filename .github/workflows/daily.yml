@@ -1,0 +1,64 @@
+name: 每日早报
+
+on:
+  schedule:
+    # 01:00 UTC = 北京时间 09:00
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      force_notify:
+        description: "即使最新一期不是今天也推送（测试用）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 抓取并渲染
+        run: python3 build.py
+
+      - name: 推送钉钉
+        env:
+          DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+          FORCE: ${{ inputs.force_notify }}
+        run: |
+          if [ -z "$DINGTALK_WEBHOOK" ]; then
+            echo "未配置 DINGTALK_WEBHOOK，跳过推送"
+            exit 0
+          fi
+          if [ "$FORCE" = "true" ]; then
+            python3 notify.py --force
+          else
+            python3 notify.py
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
