@@ -19,6 +19,7 @@ import hmac
 import html
 import json
 import os
+import re
 import sys
 import time
 import urllib.parse
@@ -30,12 +31,13 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parent
 LATEST = ROOT / "dist" / "latest.json"
 TZ = ZoneInfo("Asia/Shanghai")
+
+# 卡片是"扫一眼"用的，不是阅读器：控制标题总条数，避免长篇
 MAX_PER_SECTION = 3
-MAX_TITLES = 10
+MAX_TITLES = 9
 
 
 def strip_tags(s: str) -> str:
-    import re
     return re.sub(r"<[^>]+>", "", s or "").strip()
 
 
@@ -51,15 +53,20 @@ def signed_url(webhook: str, secret: str) -> str:
 
 
 def build_payload(meta: dict) -> dict:
-    today = meta["date"][5:].replace("-", ".")
+    """卡片里只用钉钉 markdown 一定吃得下的写法：加粗、有序列表、引用、图片。
+
+    不用 #### 小标题：钉钉各端对 h4 的支持不一致，塌成普通文本会很难看。
+    """
+    day = meta["date"][5:].replace("-", ".")
     lines = []
     if meta.get("cover"):
         lines.append("![cover](%s)" % meta["cover"])
         lines.append("")
+    lines.append("**今日 %d 条 · %d 节**" % (meta["total"], len(meta["sections"])))
 
-    sections = meta.get("focus") or []
+    focus = meta.get("focus") or []
     used = 0
-    for sec in sections:
+    for sec in focus:
         rows = []
         for it in sec["items"]:
             if used >= MAX_TITLES or len(rows) >= MAX_PER_SECTION:
@@ -69,24 +76,20 @@ def build_payload(meta: dict) -> dict:
         if not rows:
             continue
         rest = len(sec["items"]) - len(rows)
-        tail = "，另 %d 条见全文" % rest if rest > 0 else ""
         lines.append("")
-        lines.append("#### %s · %d 条%s" % (sec["name"], len(sec["items"]), ""))
+        lines.append("**%s · %d**" % (sec["name"], len(sec["items"])))
         lines.extend(rows)
         if rest > 0:
-            lines.append("> 余下 %d 条在全文里" % rest)
+            lines.append("> 另 %d 条在全文" % rest)
 
-    if not sections:
+    if not focus:
         lines.append("")
         lines.append(meta.get("summary", "")[:180])
-
-    lines.append("")
-    lines.append("**今日 %d 条 · %d 节**" % (meta["total"], len(meta["sections"])))
 
     return {
         "msgtype": "actionCard",
         "actionCard": {
-            "title": "AI 早报 %s" % today,
+            "title": "AI 早报 %s" % day,
             "text": "\n".join(lines),
             "btnOrientation": "0",
             "singleTitle": "阅读全文 · %d 条" % meta["total"],
