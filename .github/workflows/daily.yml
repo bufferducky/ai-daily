@@ -10,6 +10,10 @@ on:
         description: "即使最新一期不是今天也推送（测试用）"
         type: boolean
         default: false
+      dry_run:
+        description: "只打印要推送的内容，不真的发送"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,19 +41,21 @@ jobs:
         # 钉钉抖动不该连累站点部署：失败只标黄，不阻断 deploy
         continue-on-error: true
         env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+          FEISHU_SECRET: ${{ secrets.FEISHU_SECRET }}
           DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
           FORCE: ${{ inputs.force_notify }}
+          DRY: ${{ inputs.dry_run }}
         run: |
-          if [ -z "$DINGTALK_WEBHOOK" ]; then
-            echo "未配置 DINGTALK_WEBHOOK，跳过推送"
+          if [ -z "$FEISHU_WEBHOOK" ] && [ -z "$DINGTALK_WEBHOOK" ]; then
+            echo "未配置 FEISHU_WEBHOOK / DINGTALK_WEBHOOK，跳过推送"
             exit 0
           fi
-          if [ "$FORCE" = "true" ]; then
-            python3 notify.py --force
-          else
-            python3 notify.py
-          fi
+          ARGS=""
+          [ "$FORCE" = "true" ] && ARGS="$ARGS --force"
+          [ "$DRY" = "true" ] && ARGS="$ARGS --dry-run"
+          python3 notify.py $ARGS
 
       - uses: actions/upload-pages-artifact@v3
         with:
