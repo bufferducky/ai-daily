@@ -134,6 +134,8 @@ def parse_issue(entry: dict) -> dict | None:
                 body = drop_dup_lead(body.strip(), tldr)
             body = strip_arrows(body)
             body = re.sub(r"<p>\s*</p>", "", body)
+            # 每期 20+ 张图，不懒加载在 4G 上会拖住首屏
+            body = body.replace("<img ", '<img loading="lazy" decoding="async" ')
             if not title:
                 continue
             items.append({
@@ -182,7 +184,7 @@ CSS = """
   --card:#1a1917; --accent:#e57a5f; --accent-soft:#2e211c;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;background:var(--bg)}
 body{
   margin:0;background:var(--bg);color:var(--fg);
   font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
@@ -190,7 +192,7 @@ body{
   text-rendering:optimizeLegibility;
 }
 #bar{position:fixed;top:0;left:0;height:2px;background:var(--accent);width:0;z-index:99;transition:width .1s}
-.wrap{max-width:720px;margin:0 auto;padding:0 18px 72px}
+.wrap{max-width:720px;margin:0 auto;padding:0 18px calc(72px + env(safe-area-inset-bottom))}
 
 header.hero{padding:22px 0 6px}
 .kicker{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;letter-spacing:.08em}
@@ -223,7 +225,7 @@ nav.toc a{
 }
 nav.toc a.focus{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
 
-details.sec{border-top:1px solid var(--line);padding:4px 0}
+details.sec{border-top:1px solid var(--line);padding:4px 0;scroll-margin-top:58px}
 details.sec>summary{
   list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:12px;
   padding:16px 0;user-select:none;
@@ -276,6 +278,14 @@ footer{margin-top:10px;padding-top:22px;border-top:1px solid var(--line);
 footer a{color:var(--muted);text-decoration:none;border-bottom:1px dashed var(--line)}
 footer a:active{color:var(--accent)}
 
+#top{position:fixed;right:16px;bottom:calc(22px + env(safe-area-inset-bottom));
+  width:42px;height:42px;border-radius:50%;border:1px solid var(--line);
+  background:var(--card);color:var(--muted);font-size:17px;line-height:1;padding:0;
+  display:none;align-items:center;justify-content:center;z-index:30;
+  box-shadow:0 2px 10px rgba(0,0,0,.10)}
+#top.show{display:flex}
+#top:active{background:var(--accent-soft);color:var(--accent)}
+
 ul.archive{list-style:none;padding:0;margin:18px 0 0}
 ul.archive li{padding:13px 0;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:baseline}
 ul.archive a{color:var(--fg);text-decoration:none;flex:1}
@@ -309,21 +319,35 @@ JS = """
     root.setAttribute('data-theme',next);
     localStorage.setItem('aidaily-theme',next);
   };
+  // 三级一起展/收：分节 + 每条正文，并记住选择
   var btn=document.getElementById('expand');
   var secs=[].slice.call(document.querySelectorAll('details.sec'));
-  function allOpen(){return secs.length>0&&secs.every(function(d){return d.open})}
+  var bodies=[].slice.call(document.querySelectorAll('details.more'));
+  var all=secs.concat(bodies);
+  function isOpen(d){return d.hasAttribute('open')}
+  function allOpen(){return all.length>0&&all.every(isOpen)}
   function syncLabel(){btn.textContent=allOpen()?'收起全部':'展开全部'}
-  btn.onclick=function(){
-    var target=!allOpen();
-    secs.forEach(function(d){d.open=target});
+  function apply(open,save){
+    all.forEach(function(d){
+      if(open) d.setAttribute('open',''); else d.removeAttribute('open');
+    });
+    if(save) localStorage.setItem('aidaily-expand',open?'all':'none');
     syncLabel();
-  };
-  syncLabel();
+  }
+  btn.onclick=function(){apply(!allOpen(),true)};
+  var pref=localStorage.getItem('aidaily-expand');
+  if(pref==='all') apply(true,false);
+  else if(pref==='none') apply(false,false);
+  else syncLabel();
+
   var bar=document.getElementById('bar');
+  var topBtn=document.getElementById('top');
+  topBtn.onclick=function(){try{scrollTo({top:0,behavior:'smooth'})}catch(e){scrollTo(0,0)}};
   function onScroll(){
     var h=document.documentElement;
     var max=h.scrollHeight-h.clientHeight;
     bar.style.width=(max>0?(h.scrollTop/max*100):0)+'%';
+    if(h.scrollTop>700) topBtn.classList.add('show'); else topBtn.classList.remove('show');
   }
   addEventListener('scroll',onScroll,{passive:true});onScroll();
 })();
@@ -405,6 +429,8 @@ def render_page(issue: dict, cfg: dict, prev: dict | None, nxt: dict | None) -> 
         '<html lang="zh-CN"><head>'
         '<meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
+        '<meta name="format-detection" content="telephone=no,email=no,address=no">'
+        "<link rel=\"icon\" href=\"data:image/svg+xml,%%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%%3E%%3Crect width='32' height='32' rx='7' fill='%%23b23a22'/>%%3Ctext x='16' y='23' font-size='15' font-family='sans-serif' font-weight='bold' fill='%%23fff' text-anchor='middle'%%3EAI%%3C/text%%3E%%3C/svg%%3E\">"
         '<meta name="theme-color" content="#f6f3ec" media="(prefers-color-scheme:light)">'
         '<meta name="theme-color" content="#131211" media="(prefers-color-scheme:dark)">'
         "<title>%s %s · %s</title>"
@@ -426,6 +452,7 @@ def render_page(issue: dict, cfg: dict, prev: dict | None, nxt: dict | None) -> 
         '<nav class="toc">%s</nav>'
         "<main>%s</main>"
         "<footer>%s</footer>"
+        '<button id="top" aria-label="回到顶部">↑</button>'
         "</div>"
         "<script>%s</script>"
         "</body></html>"
