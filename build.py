@@ -169,7 +169,7 @@ CSS = """
 :root{
   --bg:#f6f3ec; --fg:#1b1916; --muted:#6d6559; --line:#e2dbcd;
   --card:#fffdf8; --accent:#b23a22; --accent-soft:#f0e2d8;
-  --fs:17px;
+  --fs:__FS__px;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
@@ -186,18 +186,20 @@ html{-webkit-text-size-adjust:100%}
 body{
   margin:0;background:var(--bg);color:var(--fg);
   font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-  font-size:var(--fs);line-height:1.78;
+  font-size:var(--fs);line-height:1.7;
   text-rendering:optimizeLegibility;
 }
 #bar{position:fixed;top:0;left:0;height:2px;background:var(--accent);width:0;z-index:99;transition:width .1s}
 .wrap{max-width:720px;margin:0 auto;padding:0 18px 72px}
 
-header.hero{padding:34px 0 6px}
+header.hero{padding:22px 0 6px}
 .kicker{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;letter-spacing:.08em}
 .kicker b{color:var(--accent);font-weight:600}
 header.hero h1{margin:10px 0 12px;font-size:1.72em;line-height:1.25;letter-spacing:-.01em;font-weight:700}
 .summary{margin:0;color:var(--muted);font-size:.94em;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.cover{width:100%;max-height:200px;object-fit:cover;border-radius:14px;margin:20px 0 0;display:block;border:1px solid var(--line)}
+.cover{width:100%;max-height:200px;object-fit:cover;border-radius:12px;margin:16px 0 0;display:block;border:1px solid var(--line)}
+/* 手机上藏掉装饰封面：通勤场景要的是信息密度，这张图只占屏 */
+@media (max-width:560px){.cover{display:none}}
 .meta{display:flex;gap:14px;margin-top:16px;color:var(--muted);font-size:13px;flex-wrap:wrap}
 .meta span{white-space:nowrap}
 .vids{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
@@ -236,7 +238,7 @@ details.sec.focus .sname{color:var(--accent)}
 details[open]>summary .chev{transform:rotate(45deg)}
 details.sec>summary:active{opacity:.6}
 
-article.item{padding:2px 0 26px}
+article.item{padding:2px 0 18px}
 article.item h3{margin:6px 0 8px;font-size:1.02em;line-height:1.5;font-weight:650}
 article.item h3 a{color:var(--fg);text-decoration:none}
 .num{
@@ -257,7 +259,7 @@ details.more>summary::before{content:"＋";font-size:11px;letter-spacing:0}
 details.more[open]>summary::before{content:"−"}
 details.more>summary:active{opacity:.55}
 details.more>div.prose{margin-top:12px}
-.prose p{margin:0 0 14px}
+.prose p{margin:0 0 10px}
 .prose code{
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em;
   background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:1px 5px;
@@ -281,7 +283,6 @@ ul.archive .d{color:var(--muted);font-size:13px;font-variant-numeric:tabular-num
 ul.archive .c{color:var(--muted);font-size:12px}
 
 @media (min-width:760px){
-  :root{--fs:18px}
   header.hero h1{font-size:2.1em}
 }
 """
@@ -293,9 +294,9 @@ JS = """
   if(saved) root.setAttribute('data-theme',saved);
   var fs=localStorage.getItem('aidaily-fs');
   if(fs) root.style.setProperty('--fs',fs+'px');
-  var cur=parseInt(fs||getComputedStyle(root).getPropertyValue('--fs'))||17;
+  var cur=parseInt(fs||getComputedStyle(root).getPropertyValue('--fs'))||14;
   function setFs(v){
-    cur=Math.min(23,Math.max(14,v));
+    cur=Math.min(22,Math.max(12,v));
     root.style.setProperty('--fs',cur+'px');
     localStorage.setItem('aidaily-fs',cur);
   }
@@ -308,6 +309,16 @@ JS = """
     root.setAttribute('data-theme',next);
     localStorage.setItem('aidaily-theme',next);
   };
+  var btn=document.getElementById('expand');
+  var secs=[].slice.call(document.querySelectorAll('details.sec'));
+  function allOpen(){return secs.length>0&&secs.every(function(d){return d.open})}
+  function syncLabel(){btn.textContent=allOpen()?'收起全部':'展开全部'}
+  btn.onclick=function(){
+    var target=!allOpen();
+    secs.forEach(function(d){d.open=target});
+    syncLabel();
+  };
+  syncLabel();
   var bar=document.getElementById('bar');
   function onScroll(){
     var h=document.documentElement;
@@ -408,6 +419,7 @@ def render_page(issue: dict, cfg: dict, prev: dict | None, nxt: dict | None) -> 
         '<div class="meta"><span>%d 条</span><span>%d 节 · 展开 %d 节</span></div>'
         "</header>"
         '<div class="toolbar">'
+        '<button id="expand">展开全部</button>'
         '<button id="fs-dn">A−</button><button id="fs-up">A+</button>'
         '<button id="theme">明/暗</button><span class="sp"></span>'
         "</div>"
@@ -421,7 +433,7 @@ def render_page(issue: dict, cfg: dict, prev: dict | None, nxt: dict | None) -> 
             esc(cfg.get("site_title", "AI 早报")),
             esc(issue["date"]),
             esc(issue["summary"][:40]),
-            CSS,
+            CSS.replace("__FS__", str(cfg.get("default_font_size", 14))),
             esc(cfg.get("site_title", "AI 早报")),
             esc(issue["date_label"]),
             esc(issue["weekday"]),

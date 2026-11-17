@@ -2,5 +2,5 @@
   "site_base": "https://bufferducky.github.io/ai-daily",
   "site_title": "AI 早报",
   "focus_sections": ["要闻", "模型发布", "开发生态"],
-  "default_font_size": 17
+  "default_font_size": 14
 }

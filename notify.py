@@ -67,7 +67,6 @@ def build_feishu_card(meta: dict) -> dict:
     """飞书消息卡片 2.0：每个分节一个折叠面板，标题层内容直接读，不跳浏览器。"""
     day = meta["date"][5:].replace("-", ".")
     wd = weekday_of(meta["date"])
-    focus = set(meta.get("focus_names") or [])
 
     elements = [{
         "tag": "markdown",
@@ -84,7 +83,9 @@ def build_feishu_card(meta: dict) -> dict:
         rows = ["**%s** %s" % (it["num"] or "·", it["title"]) for it in sec["items"]]
         elements.append({
             "tag": "collapsible_panel",
-            "expanded": sec["name"] in focus,
+            # 自定义机器人不支持卡片回传，给不了"全部展开"按钮，
+            # 所以面板一律默认展开，效果等同点过一键展开。
+            "expanded": True,
             "header": {
                 "title": {"tag": "markdown",
                           "content": "**%s** · %d 条" % (sec["name"], sec["count"])},
@@ -161,8 +162,11 @@ def build_dingtalk_payload(meta: dict) -> dict:
         lines.append("")
     lines.append("**今日 %d 条 · %d 节**" % (meta["total"], len(meta["sections"])))
 
+    focus = set(meta.get("focus_names") or [])
     used = 0
-    for sec in meta.get("focus") or []:
+    for sec in meta.get("sections_detail") or []:
+        if sec["name"] not in focus:
+            continue
         rows = []
         for it in sec["items"]:
             if used >= MAX_TITLES or len(rows) >= MAX_PER_SECTION:
@@ -171,9 +175,9 @@ def build_dingtalk_payload(meta: dict) -> dict:
             used += 1
         if not rows:
             continue
-        rest = len(sec["items"]) - len(rows)
+        rest = sec["count"] - len(rows)
         lines.append("")
-        lines.append("**%s · %d**" % (sec["name"], len(sec["items"])))
+        lines.append("**%s · %d**" % (sec["name"], sec["count"]))
         lines.extend(rows)
         if rest > 0:
             lines.append("> 另 %d 条在全文" % rest)
