@@ -513,12 +513,19 @@ def main() -> int:
         "cover": latest["cover"],
         "total": total,
         "sections": [{"name": s["name"], "count": len(s["items"])} for s in latest["sections"]],
-        "focus": [
-            {"name": s["name"], "count": len(s["items"]),
-             "items": [{"num": i["num"], "title": i["title"], "tldr": re.sub(r"<[^>]+>", "", i["tldr"])}
-                       for i in s["items"]]}
-            for s in latest["sections"] if s["name"] in set(cfg.get("focus_sections") or [])
+        "sections_detail": [
+            {
+                "name": s["name"],
+                "count": len(s["items"]),
+                "items": [
+                    {"num": i["num"], "title": i["title"],
+                     "tldr": re.sub(r"<[^>]+>", "", i["tldr"]).strip()}
+                    for i in s["items"]
+                ],
+            }
+            for s in latest["sections"]
         ],
+        "focus_names": list(cfg.get("focus_sections") or []),
         "url": "%s/%s.html" % (cfg.get("site_base", "").rstrip("/"), latest["date"]),
     }
     (DIST / "latest.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), "utf-8")

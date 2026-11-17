@@ -64,66 +64,62 @@ def feishu_sign(secret: str) -> dict:
 
 
 def build_feishu_card(meta: dict) -> dict:
-    """飞书消息卡片：标题栏 + 分区 + 按钮。"""
+    """飞书消息卡片 2.0：每个分节一个折叠面板，标题层内容直接读，不跳浏览器。"""
     day = meta["date"][5:].replace("-", ".")
     wd = weekday_of(meta["date"])
-    focus = meta.get("focus") or []
+    focus = set(meta.get("focus_names") or [])
 
     elements = [{
-        "tag": "div",
-        "text": {
-            "tag": "lark_md",
-            "content": "**今日 %d 条 · %d 节**" % (meta["total"], len(meta["sections"])),
-        },
+        "tag": "markdown",
+        "content": "**今日 %d 条 · %d 节**" % (meta["total"], len(meta["sections"])),
     }]
 
-    used = 0
-    for sec in focus:
-        rows = []
-        for it in sec["items"]:
-            if used >= MAX_TITLES or len(rows) >= MAX_PER_SECTION:
-                break
-            rows.append("%d. %s" % (len(rows) + 1, strip_tags(it["title"])))
-            used += 1
-        if not rows:
-            continue
-        rest = len(sec["items"]) - len(rows)
-        content = "**%s · %d 条**\n%s" % (sec["name"], len(sec["items"]), "\n".join(rows))
-        if rest > 0:
-            content += "\n<font color='grey'>另 %d 条在全文</font>" % rest
-        elements.append({"tag": "hr"})
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": content}})
+    summary = (meta.get("summary") or "").strip()
+    if summary:
+        if len(summary) > 110:
+            summary = summary[:110] + "…"
+        elements.append({"tag": "markdown", "content": summary})
 
-    others = [s["name"] for s in meta["sections"] if s["name"] not in {f["name"] for f in focus}]
-    if others:
-        elements.append({"tag": "hr"})
+    for sec in meta.get("sections_detail") or []:
+        rows = ["**%s** %s" % (it["num"] or "·", it["title"]) for it in sec["items"]]
         elements.append({
-            "tag": "div",
-            "text": {"tag": "lark_md",
-                     "content": "<font color='grey'>已收起：%s</font>" % "、".join(others)},
+            "tag": "collapsible_panel",
+            "expanded": sec["name"] in focus,
+            "header": {
+                "title": {"tag": "markdown",
+                          "content": "**%s** · %d 条" % (sec["name"], sec["count"])},
+                "vertical_align": "center",
+                "icon_position": "right",
+                "icon_expanded_angle": -180,
+            },
+            "border": {"color": "grey", "corner_radius": "6px"},
+            "vertical_spacing": "4px",
+            "elements": [{"tag": "markdown", "content": "\n".join(rows)}],
         })
 
+    elements.append({"tag": "hr"})
     elements.append({
-        "tag": "action",
-        "actions": [{
-            "tag": "button",
-            "text": {"tag": "plain_text", "content": "阅读全文 · %d 条" % meta["total"]},
-            "type": "primary",
-            "url": meta["url"],
-        }],
+        "tag": "button",
+        "text": {"tag": "plain_text", "content": "读全文 · %d 条" % meta["total"]},
+        "type": "primary",
+        "width": "fill",
+        "behaviors": [{"type": "open_url", "default_url": meta["url"]}],
     })
 
     return {
         "msg_type": "interactive",
         "card": {
-            "config": {"wide_screen_mode": True},
+            "schema": "2.0",
+            "config": {"wide_screen_mode": True, "update_multi": True},
             "header": {
                 "template": "orange",
-                "title": {"tag": "plain_text", "content": "AI 早报 %s 周%s" % (day, wd)},
+                "title": {"tag": "plain_text",
+                          "content": "AI 早报 %s 周%s" % (day, wd)},
             },
-            "elements": elements,
+            "body": {"elements": elements},
         },
     }
+
 
 
 def post_feishu(webhook: str, secret: str, payload: dict) -> dict:
