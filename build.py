@@ -566,6 +566,8 @@ def main() -> int:
         ],
         "focus_names": list(cfg.get("focus_sections") or []),
         "url": "%s/%s.html" % (cfg.get("site_base", "").rstrip("/"), latest["date"]),
+        # 源站当期原文，来自 RSS 的 <link>；卡片里和自建页并列给一个入口
+        "source_url": latest["link"],
     }
     (DIST / "latest.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), "utf-8")
     print("[build] %s 共 %d 条 / %d 节 -> %s" % (latest["date"], total, len(latest["sections"]), DIST))

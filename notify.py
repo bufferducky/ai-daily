@@ -99,13 +99,47 @@ def build_feishu_card(meta: dict) -> dict:
         })
 
     elements.append({"tag": "hr"})
-    elements.append({
-        "tag": "button",
-        "text": {"tag": "plain_text", "content": "读全文 · %d 条" % meta["total"]},
-        "type": "primary",
-        "width": "fill",
-        "behaviors": [{"type": "open_url", "default_url": meta["url"]}],
-    })
+    source_url = (meta.get("source_url") or "").strip()
+    if source_url:
+        # 两个入口：自建页有深色/字号/折叠，源站是原生排版，各有各的用处
+        elements.append({
+            "tag": "column_set",
+            "flex_mode": "bisect",
+            "horizontal_spacing": "8px",
+            "columns": [
+                {
+                    "tag": "column", "width": "weighted", "weight": 1,
+                    "vertical_align": "center",
+                    "elements": [{
+                        "tag": "button",
+                        "text": {"tag": "plain_text",
+                                 "content": "读全文 · %d 条" % meta["total"]},
+                        "type": "primary",
+                        "width": "fill",
+                        "behaviors": [{"type": "open_url", "default_url": meta["url"]}],
+                    }],
+                },
+                {
+                    "tag": "column", "width": "weighted", "weight": 1,
+                    "vertical_align": "center",
+                    "elements": [{
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "原文"},
+                        "type": "default",
+                        "width": "fill",
+                        "behaviors": [{"type": "open_url", "default_url": source_url}],
+                    }],
+                },
+            ],
+        })
+    else:
+        elements.append({
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "读全文 · %d 条" % meta["total"]},
+            "type": "primary",
+            "width": "fill",
+            "behaviors": [{"type": "open_url", "default_url": meta["url"]}],
+        })
 
     return {
         "msg_type": "interactive",
