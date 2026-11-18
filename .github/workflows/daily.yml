@@ -22,10 +22,9 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
+# 并发锁放在 deploy job 上，不放在 workflow 上：
+# 「等待当天内容发布」最长会占几分钟到两小时，锁在 workflow 级会挡住手动触发，
+# 也会让手动触发反过来取消还在等的定时任务。
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -75,6 +74,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
