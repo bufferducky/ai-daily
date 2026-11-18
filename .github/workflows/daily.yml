@@ -2,8 +2,10 @@ name: 每日早报
 
 on:
   schedule:
-    # 01:00 UTC = 北京时间 09:00
-    - cron: "0 1 * * *"
+    # 00:05 UTC = 北京时间 08:05，抢在源站最早可能发布（08:20 左右）之前启动。
+    # 不用整点：GitHub 在整点负载最高，schedule 会延迟甚至丢弃排队任务。
+    # 具体几点推不靠猜，交给下面的「等待当天内容发布」步骤轮询。
+    - cron: "5 0 * * *"
   workflow_dispatch:
     inputs:
       force_notify:
@@ -33,6 +35,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      # 定时任务跑在源站发布之前，这里等到当天这一期真的出现再构建；
+      # 等不到就明确失败（红），不再像以前那样静默跳过。手动触发时不等待。
+      - name: 等待当天内容发布
+        if: github.event_name == 'schedule'
+        env:
+          POLL_SECONDS: "300"
+          DEADLINE: "10:30"
+        run: python3 wait_for_today.py
 
       - name: 抓取并渲染
         run: python3 build.py

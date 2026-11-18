@@ -219,8 +219,13 @@ def main() -> int:
 
     today = datetime.now(TZ).strftime("%Y-%m-%d")
     if not force and meta["date"] != today:
-        print("[notify] 最新一期是 %s，今天 %s 还没有新内容，跳过推送" % (meta["date"], today))
-        return 0
+        # 以前这里 return 0：workflow 一片绿、群里一条没有，问题被埋掉。
+        # 定时任务已由 wait_for_today.py 等到当天内容，走到这里说明那一环失效了，必须让人看见。
+        print(
+            "[notify] 最新一期是 %s，不是今天 %s，不推送" % (meta["date"], today),
+            file=sys.stderr,
+        )
+        return 1
 
     fs_hook = os.environ.get("FEISHU_WEBHOOK", "").strip()
     fs_secret = os.environ.get("FEISHU_SECRET", "").strip()
