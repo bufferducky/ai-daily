@@ -32,6 +32,8 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from delivery_gate import within_window
+
 ROOT = Path(__file__).resolve().parent
 LATEST = ROOT / "dist" / "latest.json"
 TZ = ZoneInfo("Asia/Shanghai")
@@ -251,6 +253,10 @@ def main() -> int:
     force = "--force" in sys.argv
     dry = "--dry-run" in sys.argv
 
+    if os.environ.get("GITHUB_EVENT_NAME") == "schedule" and not within_window(datetime.now(TZ)):
+        print("[notify] 已离开北京 08:30 至 10:00 的推送窗口，停止推送", file=sys.stderr)
+        return 1
+
     today = datetime.now(TZ).strftime("%Y-%m-%d")
     if not force and meta["date"] != today:
         # 以前这里 return 0：workflow 一片绿、群里一条没有，问题被埋掉。
@@ -271,8 +277,8 @@ def main() -> int:
     elif dt_hook:
         channel, payload = "钉钉", build_dingtalk_payload(meta)
     else:
-        print("[notify] 未配置 FEISHU_WEBHOOK 或 DINGTALK_WEBHOOK，跳过推送")
-        return 0
+        print("[notify] 未配置 FEISHU_WEBHOOK 或 DINGTALK_WEBHOOK，推送失败", file=sys.stderr)
+        return 1
 
     if dry:
         print("channel=%s" % channel)

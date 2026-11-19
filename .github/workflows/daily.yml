@@ -2,14 +2,15 @@ name: 每日早报
 
 on:
   schedule:
-    # 00:05 UTC = 北京时间 08:05，抢在源站最早可能发布（08:20 左右）之前启动。
-    # 不用整点：GitHub 在整点负载最高，schedule 会延迟甚至丢弃排队任务。
-    # 具体几点推不靠猜，交给下面的「等待当天内容发布」步骤轮询。
-    - cron: "5 0 * * *"
+    # GitHub schedule 最短间隔为 5 分钟；多次启动机会降低单次漏调度的影响。
+    # UTC 00:30—02:00 = 北京 08:30—10:00，迟到的运行由 gate 拦截。
+    - cron: "30-59/5 0 * * *"
+    - cron: "*/5 1 * * *"
+    - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
       force_notify:
-        description: "即使最新一期不是今天也推送（测试用）"
+        description: "忽略当天成功记录和内容日期，强制推送（测试用）"
         type: boolean
         default: false
       dry_run:
@@ -19,37 +20,50 @@ on:
 
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
-# 并发锁放在 deploy job 上，不放在 workflow 上：
-# 「等待当天内容发布」最长会占几分钟到两小时，锁在 workflow 级会挡住手动触发，
-# 也会让手动触发反过来取消还在等的定时任务。
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 100
+    # 检查回执、发送、保存回执必须串行；后来的触发不能取消正在轮询的任务。
+    # 手动任务也使用同一把锁，避免和定时任务同时推送。
+    concurrency:
+      group: ai-daily-delivery
+      cancel-in-progress: false
+    outputs:
+      built: ${{ steps.pages.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v4
 
+      - name: 检查执行窗口和当天成功记录
+        id: gate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force_notify }}
+          DRY: ${{ inputs.dry_run }}
+        run: python3 delivery_gate.py
+
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
         with:
           python-version: "3.12"
 
-      # 定时任务跑在源站发布之前，这里等到当天这一期真的出现再构建；
-      # 等不到就明确失败（红），不再像以前那样静默跳过。手动触发时不等待。
-      - name: 等待当天内容发布
-        if: github.event_name == 'schedule'
+      - name: 每分钟等待当天内容，10点截止
+        if: steps.gate.outputs.run == 'true' && github.event_name == 'schedule'
         env:
-          POLL_SECONDS: "300"
-          DEADLINE: "10:30"
-        run: python3 wait_for_today.py
+          POLL_SECONDS: "60"
+          DEADLINE: "10:00"
+        run: python3 -u wait_for_today.py
 
       - name: 抓取并渲染
+        if: steps.gate.outputs.run == 'true'
         run: python3 build.py
 
       - name: 推送通知
-        # 钉钉抖动不该连累站点部署：失败只标黄，不阻断 deploy
-        continue-on-error: true
+        if: steps.gate.outputs.run == 'true'
         env:
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
           FEISHU_SECRET: ${{ secrets.FEISHU_SECRET }}
@@ -58,21 +72,40 @@ jobs:
           FORCE: ${{ inputs.force_notify }}
           DRY: ${{ inputs.dry_run }}
         run: |
-          if [ -z "$FEISHU_WEBHOOK" ] && [ -z "$DINGTALK_WEBHOOK" ]; then
-            echo "未配置 FEISHU_WEBHOOK / DINGTALK_WEBHOOK，跳过推送"
-            exit 0
-          fi
-          ARGS=""
-          [ "$FORCE" = "true" ] && ARGS="$ARGS --force"
-          [ "$DRY" = "true" ] && ARGS="$ARGS --dry-run"
-          python3 notify.py $ARGS
+          ARGS=()
+          [ "$FORCE" = "true" ] && ARGS+=(--force)
+          [ "$DRY" = "true" ] && ARGS+=(--dry-run)
+          python3 notify.py "${ARGS[@]}"
+
+      - name: 生成推送成功回执
+        if: steps.gate.outputs.run == 'true' && steps.gate.outputs.record == 'true'
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          receipt = {"run_id": os.environ["GITHUB_RUN_ID"]}
+          (Path(os.environ["RUNNER_TEMP"]) / "notified.json").write_text(json.dumps(receipt))
+          PY
+
+      - name: 保存当天推送成功记录
+        if: steps.gate.outputs.run == 'true' && steps.gate.outputs.record == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: notified-${{ steps.gate.outputs.today }}
+          path: ${{ runner.temp }}/notified.json
+          retention-days: 7
+          overwrite: true
+          if-no-files-found: error
 
       - uses: actions/upload-pages-artifact@v3
+        id: pages
+        if: steps.gate.outputs.run == 'true'
         with:
           path: dist
 
   deploy:
     needs: build
+    if: needs.build.outputs.built == 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: pages
