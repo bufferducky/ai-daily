@@ -9,6 +9,10 @@ on:
     - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
+      automatic:
+        description: "外部定时器调用：遵守执行窗口、等待当天内容及10点截止"
+        type: boolean
+        default: false
       force_notify:
         description: "忽略当天成功记录和内容日期，强制推送（测试用）"
         type: boolean
@@ -23,6 +27,9 @@ permissions:
   actions: read
   pages: write
   id-token: write
+
+env:
+  AUTOMATIC: ${{ inputs.automatic }}
 
 jobs:
   build:
@@ -52,7 +59,7 @@ jobs:
           python-version: "3.12"
 
       - name: 每分钟等待当天内容，10点截止
-        if: steps.gate.outputs.run == 'true' && github.event_name == 'schedule'
+        if: steps.gate.outputs.run == 'true' && steps.gate.outputs.automatic == 'true'
         env:
           POLL_SECONDS: "60"
           DEADLINE: "10:00"

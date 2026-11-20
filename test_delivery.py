@@ -48,6 +48,31 @@ class GateTests(unittest.TestCase):
                 self.assertTrue(delivery_gate.decide(at("11:00:00"), event="workflow_dispatch", **options))
                 lookup.assert_not_called()
 
+    def test_external_automatic_mode_enforces_window_even_with_force_or_dry(self):
+        for time in ["08:29:59", "10:00:00", "11:00:00"]:
+            with patch.object(delivery_gate, "already_notified") as lookup:
+                self.assertFalse(delivery_gate.decide(
+                    at(time), event="workflow_dispatch", automatic=True, force=True, dry=True,
+                ))
+                lookup.assert_not_called()
+
+    def test_external_automatic_mode_waits_and_respects_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            with patch.dict(os.environ, {
+                "GITHUB_EVENT_NAME": "workflow_dispatch", "AUTOMATIC": "true",
+                "GITHUB_OUTPUT": str(output), "FORCE": "false", "DRY": "false",
+            }), patch.object(delivery_gate, "datetime") as clock, \
+                 patch.object(delivery_gate, "already_notified", return_value=False):
+                clock.now.return_value = at("08:30:00")
+                delivery_gate.main()
+            self.assertIn("automatic=true\n", output.read_text())
+            self.assertIn("run=true\n", output.read_text())
+        with patch.object(delivery_gate, "already_notified", return_value=True):
+            self.assertFalse(delivery_gate.decide(
+                at("09:00:00"), event="workflow_dispatch", automatic=True,
+            ))
+
     def test_only_live_receipt_counts(self):
         for artifacts, expected in [([], False), ([{"expired": True}], False),
                                     ([{"expired": False}], True)]:
@@ -107,6 +132,20 @@ class NotifyTests(unittest.TestCase):
                  patch.object(notify, "post_feishu") as send, \
                  patch.dict(os.environ, {"GITHUB_EVENT_NAME": "schedule", "FEISHU_WEBHOOK": "test"}), \
                  patch("sys.argv", ["notify.py"]):
+                clock.now.return_value = at("10:00:00")
+                self.assertNotEqual(notify.main(), 0)
+                send.assert_not_called()
+
+    def test_external_automatic_notification_does_not_send_after_deadline(self):
+        # 同样验证 --force 不能让自动任务越过截止时间。
+        with tempfile.TemporaryDirectory() as directory:
+            latest = Path(directory) / "latest.json"
+            latest.write_text(json.dumps({"date": "2026-11-19"}))
+            with patch.object(notify, "LATEST", latest), \
+                 patch.object(notify, "datetime") as clock, \
+                 patch.object(notify, "post_feishu") as send, \
+                 patch.dict(os.environ, {"GITHUB_EVENT_NAME": "workflow_dispatch", "AUTOMATIC": "true"}), \
+                 patch("sys.argv", ["notify.py", "--force"]):
                 clock.now.return_value = at("10:00:00")
                 self.assertNotEqual(notify.main(), 0)
                 send.assert_not_called()

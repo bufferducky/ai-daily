@@ -16,6 +16,10 @@ def within_window(now: datetime) -> bool:
     return START <= now.astimezone(TZ).time() < END
 
 
+def is_automatic(event: str, automatic: bool = False) -> bool:
+    return event == "schedule" or (event == "workflow_dispatch" and automatic)
+
+
 def already_notified(today: str) -> bool:
     name = "notified-" + today
     query = urllib.parse.urlencode({"name": name, "per_page": 100})
@@ -36,11 +40,13 @@ def already_notified(today: str) -> bool:
     return any(not artifact["expired"] for artifact in artifacts)
 
 
-def decide(now: datetime, *, event: str, force: bool = False, dry: bool = False) -> bool:
-    if event == "schedule" and not within_window(now):
+def decide(now: datetime, *, event: str, force: bool = False, dry: bool = False,
+           automatic: bool = False) -> bool:
+    automated = is_automatic(event, automatic)
+    if automated and not within_window(now):
         print("[gate] 不在北京 08:30（含）至 10:00（不含）的执行窗口，跳过")
         return False
-    if event == "workflow_dispatch" and (force or dry):
+    if not automated and event == "workflow_dispatch" and (force or dry):
         return True
     today = now.astimezone(TZ).strftime("%Y-%m-%d")
     if already_notified(today):
@@ -52,16 +58,19 @@ def decide(now: datetime, *, event: str, force: bool = False, dry: bool = False)
 def main() -> None:
     now = datetime.now(TZ)
     dry = os.environ.get("DRY", "false") == "true"
+    automatic = os.environ.get("AUTOMATIC", "false") == "true"
     run = decide(
         now,
         event=os.environ["GITHUB_EVENT_NAME"],
         force=os.environ.get("FORCE", "false") == "true",
         dry=dry,
+        automatic=automatic,
     )
     with open(os.environ["GITHUB_OUTPUT"], "a") as output:
         output.write(f"run={str(run).lower()}\n")
         output.write(f"record={str(not dry).lower()}\n")
         output.write(f"today={now:%Y-%m-%d}\n")
+        output.write(f"automatic={str(is_automatic(os.environ['GITHUB_EVENT_NAME'], automatic)).lower()}\n")
 
 
 if __name__ == "__main__":

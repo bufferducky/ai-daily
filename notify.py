@@ -32,7 +32,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from delivery_gate import within_window
+from delivery_gate import is_automatic, within_window
 
 ROOT = Path(__file__).resolve().parent
 LATEST = ROOT / "dist" / "latest.json"
@@ -250,10 +250,13 @@ def main() -> int:
         print("[notify] 找不到 dist/latest.json，先跑 build.py", file=sys.stderr)
         return 1
     meta = json.loads(LATEST.read_text("utf-8"))
-    force = "--force" in sys.argv
+    automated = is_automatic(
+        os.environ.get("GITHUB_EVENT_NAME", ""), os.environ.get("AUTOMATIC") == "true",
+    )
+    force = "--force" in sys.argv and not automated
     dry = "--dry-run" in sys.argv
 
-    if os.environ.get("GITHUB_EVENT_NAME") == "schedule" and not within_window(datetime.now(TZ)):
+    if automated and not within_window(datetime.now(TZ)):
         print("[notify] 已离开北京 08:30 至 10:00 的推送窗口，停止推送", file=sys.stderr)
         return 1
 
