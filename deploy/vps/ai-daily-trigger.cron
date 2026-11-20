@@ -3,5 +3,5 @@ PATH=/usr/local/bin:/usr/bin:/bin
 CRON_TZ=Asia/Shanghai
 MAILTO=""
 
-30-59/5 8 * * * root /opt/ai-daily-trigger/run.sh >> /var/log/ai-daily-trigger.log 2>&1
-*/5 9 * * * root /opt/ai-daily-trigger/run.sh >> /var/log/ai-daily-trigger.log 2>&1
+30-59 8 * * * root /opt/ai-daily-trigger/run.sh >> /var/log/ai-daily-trigger.log 2>&1
+* 9 * * * root /opt/ai-daily-trigger/run.sh >> /var/log/ai-daily-trigger.log 2>&1

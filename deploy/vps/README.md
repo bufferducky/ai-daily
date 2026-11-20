@@ -1,6 +1,6 @@
 # 154 VPS 日报触发器
 
-用已有的 Bash、curl、jq、flock 和 crond 运行，不依赖宿主机 Python。北京时间每天 08:30—09:55 每 5 分钟检查一次，触发工作流时传入 `automatic=true`。
+用已有的 Bash、curl、jq、flock 和 crond 运行，不依赖宿主机 Python。北京时间每天 08:30—09:59 每分钟检查一次，触发工作流时传入 `automatic=true`。
 
 | VPS 路径 | 用途 |
 |---|---|
